@@ -1,6 +1,6 @@
 #include "SvgScene.h"
 
-#include <librsvg-2.0/librsvg/rsvg.h>
+#include <librsvg/rsvg.h>
 #include <stdexcept>
 
 #include "../../IO/VisualMedia.h"

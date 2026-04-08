@@ -11,7 +11,9 @@ SwapTube is built on FFMPEG, but most of the functionalities above the layer of 
 https://discord.gg/a786NZXYQ3
 
 # Compatibility
-SwapTube is developed, and is known to compile and run on several Linux distributions. MacOS and Windows are untested.
+SwapTube is developed on Linux and is known to compile and run on several Linux distributions.
+
+macOS is now supported for CPU-safe projects and demos through the standard CMake and `go.sh` flow. GPU-backed scenes still require CUDA or HIP, which are typically unavailable on macOS, so those projects will render with limited fallback behavior or blank placeholders instead of accelerated output.
 
 There is an experimental Windows/MSVC build available in a fork: [meghanto/swaptube](https://github.com/meghanto/swaptube). It is not officially supported here, may lag behind `master`, and comes with no guarantee of ongoing maintenance.
 
@@ -27,9 +29,15 @@ If neither CUDA nor HIP is properly installed (for example, if the CUDA version 
 ### External Dependencies
 The following external dependencies are required for specific functionalities within the project. These dependencies must be installed if you want to use the related features.
 
+On macOS, install the common dependencies with Homebrew before building:
+
+```bash
+brew install cmake ffmpeg glib cairo librsvg libpng gnuplot nlohmann-json
+```
+
 | Item | What functionality is it needed for? | Used Where? | Used How? | Sample Ubuntu Installation |
 |------------|---------|---------|----------------|--------------|
-| CMake and Ninja | Everything | go.sh script | Compiles the project | `sudo apt install cmake` |
+| CMake (and optionally Ninja) | Everything | go.sh script | Compiles the project | `sudo apt install cmake` |
 | FFMPEG 5.0 or higher, and associated development libraries | Everything | audio_video folder | Encoding and processing video and audio streams | `sudo apt install ffmpeg libswscale-dev libavcodec-dev libavformat-dev libavdevice-dev libavutil-dev libavfilter-dev` Note: compiling ffmpeg from source, it will likely be compiled with support for extra features detected on your system, which are not baked into my CMake config. I suggest installing a precompiled binary. |
 | CUDA or HIP/ROCm | Computationally intensive graphics | Video render loop | Various | Hardware-dependent |
 | gnuplot | Debug plot generation | DebugPlot.h | Data dumped in out/ is rendered to a PNG | `sudo apt install gnuplot` |

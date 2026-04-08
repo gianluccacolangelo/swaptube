@@ -9,44 +9,44 @@ check_command_available() {
     fi
 }
 
-# Check for required commands
-check_command_available "cmake"
-check_command_available "ninja"
-check_command_available "gnuplot"
-# Check if MicroTeX build exists
-if [ ! -s "../MicroTeX-master/build/LaTeX" ]; then
-    echo "Error: ../MicroTeX-master/build/LaTeX does not exist. MicroTeX is required for this project."
-    echo "Install instructions are available at https://github.com/NanoMichael/MicroTeX"
-
-    # Ask the user for confirmation
-    read -p "Would you like to automatically re-install MicroTeX now? Installation process can be viewed in go.sh. [y/N]: " choice
-    case "$choice" in
-        y|Y )
-            (
-                set -e # Exit on error
-                echo ">>> Cloning and building MicroTeX..."
-                cd .. || exit 1
-                rm MicroTeX-master -rf
-                git clone --depth 1 https://github.com/NanoMichael/MicroTeX.git MicroTeX-master
-                cd MicroTeX-master || exit 1
-                mkdir -p build
-                cd build || exit 1
-                cmake ..
-                make -j"$(nproc)"
-            )
-            ;;
-        * )
-    esac
-
-    # Verify installation
-    if [ ! -s "../MicroTeX-master/build/LaTeX" ]; then
-        echo "Installation aborted or failed. Please follow the instructions manually: https://github.com/NanoMichael/MicroTeX"
-        echo "HINT: If you are unable to install gtksourceviewmm-3.0 using your distro's package manager, try building it yourself using these instructions:"
-        echo "https://github.com/end-4/dots-hyprland/issues/955#issuecomment-2486579754"
-        exit 1
+get_job_count() {
+    if command -v nproc > /dev/null 2>&1; then
+        nproc
+        return
     fi
 
-    echo "MicroTeX installation verified."
+    if [ "$(uname)" = "Darwin" ]; then
+        sysctl -n hw.ncpu
+        return
+    fi
+
+    if command -v getconf > /dev/null 2>&1; then
+        getconf _NPROCESSORS_ONLN
+        return
+    fi
+
+    echo 1
+}
+
+pick_cmake_generator() {
+    if command -v ninja > /dev/null 2>&1; then
+        echo "Ninja"
+    else
+        echo "Unix Makefiles"
+    fi
+}
+
+# Check for required commands
+check_command_available "cmake"
+check_command_available "gnuplot"
+JOB_COUNT=$(get_job_count)
+CMAKE_GENERATOR=$(pick_cmake_generator)
+# Check if MicroTeX build exists.
+# It is only needed by projects that render LaTeX, so do not fail early if it is absent.
+if [ ! -s "../MicroTeX-master/build/LaTeX" ]; then
+    echo "go.sh: Warning - ../MicroTeX-master/build/LaTeX was not found."
+    echo "go.sh: Projects that call latex_to_pix() will fail at runtime until MicroTeX is installed."
+    echo "go.sh: Install instructions are available at https://github.com/NanoMichael/MicroTeX"
 fi
 
 # Check if the number of arguments is less or more than expected
@@ -157,14 +157,14 @@ echo "go.sh: Building project ${PROJECT_NAME} with output folder name ${OUTPUT_F
     echo "==============================================="
     echo "=================== COMPILE ==================="
     echo "==============================================="
-    echo "go.sh: Running \`cmake ..\` from build directory"
+    echo "go.sh: Running \`cmake -G \"$CMAKE_GENERATOR\" ..\` from build directory"
 
     # Pass the variables to CMake as options
-    cmake -G Ninja .. -DPROJECT_NAME_MACRO="${PROJECT_NAME}" -DAUDIO_HINTS="${AUDIO_HINTS}" -DAUDIO_SFX="${AUDIO_SFX}" -DUSE_HIP="${USE_HIP}"
+    cmake -G "$CMAKE_GENERATOR" .. -DPROJECT_NAME_MACRO="${PROJECT_NAME}" -DAUDIO_HINTS="${AUDIO_HINTS}" -DAUDIO_SFX="${AUDIO_SFX}" -DUSE_HIP="${USE_HIP}"
 
     echo "go.sh: Compiling..."
     # build the project
-    ninja -j"$(nproc)"
+    cmake --build . -j"$JOB_COUNT"
 
     # Check if the build was successful
     if [ $? -ne 0 ]; then

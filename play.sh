@@ -19,6 +19,14 @@ check_media_player_exists() {
     exit 1
 }
 
+file_size_bytes() {
+    if stat --version >/dev/null 2>&1; then
+        stat -c%s "$1"
+    else
+        stat -f%z "$1"
+    fi
+}
+
 # Argument parsing
 if [ $# -lt 1 ] || [ $# -gt 2 ]; then
     echo "play.sh: Usage: $0 <ProjectName> [MediaPlayer]"
@@ -39,7 +47,7 @@ if [ -n "$ultimate_subdir" ]; then
         file_path="${ultimate_subdir}Video.mp4"
     fi
 
-    if [ -n "$file_path" ] && [ -s "$file_path" ] && [ "$(stat -c%s "$file_path")" -ge 1024 ]; then
+    if [ -n "$file_path" ] && [ -s "$file_path" ] && [ "$(file_size_bytes "$file_path")" -ge 1024 ]; then
         echo "play.sh: Playing $file_path with $MEDIA_PLAYER ..."
         "$MEDIA_PLAYER" "$file_path" > /dev/null 2>&1
     else
@@ -48,4 +56,3 @@ if [ -n "$ultimate_subdir" ]; then
 else
     echo "play.sh: No output directory found for project ${PROJECT_NAME}."
 fi
-

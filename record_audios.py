@@ -4,6 +4,7 @@ import subprocess
 import re
 import shutil
 import argparse
+import platform
 
 def delete_temp_recordings(temp_recordings_dir):
     if os.path.exists(temp_recordings_dir):
@@ -43,6 +44,95 @@ def prompt_user_to_archive_recordings(project_dir):
     else:
         print("No recordings were archived.")
 
+def select_linux_audio_device():
+    try:
+        devices_output = subprocess.check_output(["arecord", "-l"], stderr=subprocess.STDOUT).decode()
+        available_devices = []
+        for line in devices_output.splitlines():
+            if line.strip().startswith("card"):
+                available_devices.append(line.strip())
+    except Exception as e:
+        print("Error listing audio devices:", e)
+        return None, None
+
+    if not available_devices:
+        print("No ALSA capture devices were found.")
+        return None, None
+
+    blue_devices = [device for device in available_devices if ('blue' in device.lower() or 'yeti' in device.lower())]
+    if len(blue_devices) == 1:
+        selected_line = blue_devices[0]
+        print(f"Automatically selected microphone: {selected_line}")
+    else:
+        for idx, device in enumerate(available_devices):
+            print(f"{idx}: {device}")
+        selected_index = int(input("Enter the corresponding number: "))
+        selected_line = available_devices[selected_index]
+
+    m = re.search(r"card (\d+).*device (\d+):", selected_line)
+    if not m:
+        print("Could not parse device info.")
+        return None, None
+
+    card_num = m.group(1)
+    device_num = m.group(2)
+    return "alsa", f"hw:{card_num},{device_num}"
+
+def select_macos_audio_device():
+    try:
+        devices_output = subprocess.check_output(
+            ["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+            stderr=subprocess.STDOUT
+        ).decode(errors="replace")
+    except subprocess.CalledProcessError as e:
+        devices_output = e.output.decode(errors="replace")
+    except Exception as e:
+        print("Error listing audio devices:", e)
+        return None, None
+
+    available_devices = []
+    in_audio_section = False
+    for line in devices_output.splitlines():
+        if "AVFoundation audio devices" in line:
+            in_audio_section = True
+            continue
+        if "AVFoundation video devices" in line:
+            in_audio_section = False
+            continue
+        if not in_audio_section:
+            continue
+
+        match = re.search(r"\[(\d+)\]\s+(.+)$", line)
+        if match:
+            available_devices.append((match.group(1), match.group(2).strip()))
+
+    if not available_devices:
+        print("No AVFoundation audio devices were found.")
+        return None, None
+
+    blue_devices = [device for device in available_devices if ('blue' in device[1].lower() or 'yeti' in device[1].lower())]
+    if len(blue_devices) == 1:
+        selected_index, selected_name = blue_devices[0]
+        print(f"Automatically selected microphone: [{selected_index}] {selected_name}")
+    else:
+        for idx, (_, device_name) in enumerate(available_devices):
+            print(f"{idx}: {device_name}")
+        selected_device_idx = int(input("Enter the corresponding number: "))
+        selected_index, selected_name = available_devices[selected_device_idx]
+        print(f"Selected microphone: [{selected_index}] {selected_name}")
+
+    return "avfoundation", f":{selected_index}"
+
+def select_audio_device():
+    system = platform.system()
+    if system == "Linux":
+        return select_linux_audio_device()
+    if system == "Darwin":
+        return select_macos_audio_device()
+
+    print(f"Unsupported platform for audio recording helper: {system}")
+    return None, None
+
 def main():
     parser = argparse.ArgumentParser(description="Record audio files based on record_list.tsv")
     parser.add_argument('project_name', help="Name of the project")
@@ -77,33 +167,8 @@ def main():
 
     prompt_user_to_archive_recordings(PROJECT_DIR)
 
-    try:
-        devices_output = subprocess.check_output(["arecord", "-l"], stderr=subprocess.STDOUT).decode()
-        available_devices = []
-        for line in devices_output.splitlines():
-            if line.strip().startswith("card"):
-                available_devices.append(line.strip())
-    except Exception as e:
-        print("Error listing audio devices:", e)
-        return
-
-    blue_devices = [device for device in available_devices if ('blue' in device.lower() or 'yeti' in device.lower())]
-    if len(blue_devices) == 1:
-        selected_line = blue_devices[0]
-        print(f"Automatically selected microphone: {selected_line}")
-    else:
-        for idx, device in enumerate(available_devices):
-            print(f"{idx}: {device}")
-        selected_index = int(input("Enter the corresponding number: "))
-        selected_line = available_devices[selected_index]
-
-    m = re.search(r"card (\d+).*device (\d+):", selected_line)
-    if m:
-        card_num = m.group(1)
-        device_num = m.group(2)
-        selected_device = f"hw:{card_num},{device_num}"
-    else:
-        print("Could not parse device info.")
+    input_format, selected_device = select_audio_device()
+    if not input_format or not selected_device:
         return
 
     input("Do 100 jumping jacks...")
@@ -134,7 +199,7 @@ def main():
             ffmpeg_log = os.path.join(PROJECT_DIR, "ffmpeg.log")
             ffmpeg_cmd = [
                 'ffmpeg',
-                '-f', 'alsa',
+                '-f', input_format,
                 '-ar', '48000',
                 '-ac', '2',
                 '-i', selected_device, 
@@ -173,7 +238,7 @@ def main():
                     input("Let's check the first audio output file...")
                     ffplay_cmd = [ 'ffplay', final_path ]
                     ffplay_process = subprocess.Popen(ffplay_cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    ffmpeg_process.wait()
+                    ffplay_process.wait()
                     user_check = input("Was it good? [Y/n]")
                     if user_check == 'n' or user_check == 'N':
                         print(f"Deleting {final_path}...")

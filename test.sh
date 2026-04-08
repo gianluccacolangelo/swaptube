@@ -1,7 +1,10 @@
 #!/bin/bash
 
 # List of demo projects
-mapfile -t DEMOS < <(find src/Projects/Demos -type f -name '*.cpp' -printf '%f\n' | sed 's/\.cpp$//')
+DEMOS=()
+while IFS= read -r file; do
+    DEMOS+=("$(basename "${file%.cpp}")")
+done < <(find src/Projects/Demos -type f -name '*.cpp' | sort)
 
 PASS_COUNT=0
 FAIL_COUNT=0

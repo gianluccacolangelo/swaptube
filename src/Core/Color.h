@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iomanip>
+#include <sstream>
 #include "../Host_Device_Shared/helpers.h"
 
 // Colors are everywhere. For the sake of speed, we do not give them a dedicated class.

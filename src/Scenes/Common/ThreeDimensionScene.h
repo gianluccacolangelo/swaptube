@@ -3,6 +3,7 @@
 #include <fstream>
 #include "SuperScene.h"
 #include <string>
+#include <map>
 #include <unordered_map>
 #include <vector>
 #include <queue>

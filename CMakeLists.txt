@@ -5,15 +5,17 @@ message(STATUS "C++ standard set to ${CMAKE_CXX_STANDARD}")
 project(swaptube LANGUAGES CXX)
 message(STATUS "Project '${PROJECT_NAME}' initialized")
 
-set(ENV{GLIBCXX_FORCE_NEW} 1)
+if(NOT APPLE)
+    set(ENV{GLIBCXX_FORCE_NEW} 1)
+endif()
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(FFMPEG REQUIRED libswscale libavcodec libavformat libavdevice libavutil libavfilter)
-pkg_check_modules(GLIB REQUIRED glib-2.0)
-find_package(Cairo REQUIRED)
-find_package(RSVG REQUIRED)
-find_package(PNG REQUIRED)
+pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET libswscale libavcodec libavformat libavdevice libavutil libavfilter)
+pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0 gobject-2.0 gio-2.0 gdk-pixbuf-2.0)
+pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
+pkg_check_modules(RSVG REQUIRED IMPORTED_TARGET librsvg-2.0)
+pkg_check_modules(LIBPNG REQUIRED IMPORTED_TARGET libpng)
 find_package(nlohmann_json REQUIRED)
 
 set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
@@ -22,9 +24,9 @@ set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CMAKE_COMMAND} -E time")
 # Add globbed cpp files: all .cpp files in src, including subdirectories.
 # Exclude the src/Projects/ directory.
 # Include, however, src/Projects/.active_project.cpp
-file(GLOB_RECURSE SOURCES "src/*.cpp")
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 list(FILTER SOURCES EXCLUDE REGEX "src/Projects/.*")
-file(GLOB_RECURSE ACTIVE_PROJECT_SOURCE "src/Projects/.active_project.cpp")
+file(GLOB_RECURSE ACTIVE_PROJECT_SOURCE CONFIGURE_DEPENDS "src/Projects/.active_project.cpp")
 
 include(CheckLanguage)
 message(STATUS "Checking for CUDA and HIP support...")
@@ -106,24 +108,16 @@ message(STATUS "Preprocessor definitions added")
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${PROJECT_NAME}
-    ${FFMPEG_INCLUDE_DIRS} ${RSVG_INCLUDE_DIRS} ${GLIB_INCLUDE_DIRS}
-    "/usr/include/gdk-pixbuf-2.0"
-    "/usr/include/cairo"
-    ${PNG_INCLUDE_DIR}
 )
 
 target_link_libraries(
-    ${PROJECT_NAME}
-    ${GLIB_LIBRARIES}
-    ${FFMPEG_LIBRARIES}
-    ${RSVG_LIBRARIES}
-    ${FDKAAC_LIBRARIES}
-    cairo
-    gobject-2.0
-    lzma
-    ${PNG_LIBRARIES}
+    ${PROJECT_NAME} PRIVATE
+    PkgConfig::GLIB
+    PkgConfig::FFMPEG
+    PkgConfig::CAIRO
+    PkgConfig::RSVG
+    PkgConfig::LIBPNG
     ${GPU_LIBRARIES}
-    ${X11_LIBRARIES}
     nlohmann_json::nlohmann_json
 )
 
