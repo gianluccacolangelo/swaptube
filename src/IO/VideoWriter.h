@@ -21,6 +21,9 @@ class VideoWriter {
 private:
     // note that the FormatContext has shared ownership with audioWriter and MovieWriter
     AVFormatContext *fc = nullptr;
+    int video_width_pixels = 0;
+    int video_height_pixels = 0;
+    int video_framerate_fps = 0;
 
     AVStream *videoStream = nullptr;
     AVCodecContext *videoCodecContext = nullptr;

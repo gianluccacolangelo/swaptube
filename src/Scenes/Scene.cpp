@@ -23,7 +23,9 @@ void stage_macroblock(const Macroblock& macroblock, int expected_microblocks_in_
     cout << "Set remaining microblocks in macroblock to " << to_string(remaining_microblocks_in_macroblock) << endl;
     macroblock.write_shtooka();
 
-    get_writer().audio->encode_buffers();
+    if (rendering_on()) {
+        get_writer().audio->encode_buffers();
+    }
 
     total_frames_in_macroblock = macroblock.write_and_get_duration_frames();
     if (!rendering_on()) total_frames_in_macroblock = min(10, total_microblocks_in_macroblock); // Don't do too many simmed microblocks in smoketest
@@ -190,7 +192,10 @@ void Scene::publish_global() {
 void Scene::render_one_frame(int microblock_frame_number, int scene_duration_frames) {
     cout << "[" << flush;
 
-    sample_t sample = get_writer().audio->get_max_sample_for_frame(total_frames_in_macroblock - remaining_frames_in_macroblock);
+    sample_t sample = 0;
+    if (rendering_on()) {
+        sample = get_writer().audio->get_max_sample_for_frame(total_frames_in_macroblock - remaining_frames_in_macroblock);
+    }
     set_global_state("macroblock_fraction", 1 - static_cast<double>(remaining_frames_in_macroblock) / total_frames_in_macroblock);
     set_global_state("microblock_fraction", static_cast<double>(microblock_frame_number) / scene_duration_frames);
     set_global_state("voice", sample_to_float(sample));
@@ -198,7 +203,11 @@ void Scene::render_one_frame(int microblock_frame_number, int scene_duration_fra
     Pixels* p = nullptr;
     query(p);
 
-    get_writer().video->add_frame(*p);
+    if (rendering_on()) {
+        get_writer().video->add_frame(*p);
+    } else {
+        p->print_to_terminal();
+    }
 
     remaining_frames_in_macroblock--;
     set_global_state("frame_number", get_global_state("frame_number") + 1);

@@ -27,7 +27,7 @@ Writer::Writer(int video_width_pixels, int video_height_pixels, int video_framer
     if (ret < 0) throw std::runtime_error("Failed to allocate output format context");
     if (format_context == nullptr) throw std::runtime_error("Failed to allocate output format context");
 
-    audio = new AudioWriter(format_context, audio_samplerate_hz);
+    audio = new AudioWriter(format_context, audio_samplerate_hz, video_framerate_fps);
     video = new VideoWriter(format_context, video_path, video_width_pixels, video_height_pixels, video_framerate_fps);
 }
 

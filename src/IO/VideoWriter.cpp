@@ -66,7 +66,7 @@ bool VideoWriter::encode_and_write_frame(AVFrame* frame){
 
     // We set the packet PTS and DTS taking in the account our FPS (second argument),
     // and the time base that our selected format uses (third argument).
-    av_packet_rescale_ts(&pkt, { 1, get_video_framerate_fps() }, videoStream->time_base);
+    av_packet_rescale_ts(&pkt, { 1, video_framerate_fps }, videoStream->time_base);
 
     pkt.stream_index = videoStream->index;
 
@@ -80,7 +80,11 @@ bool VideoWriter::encode_and_write_frame(AVFrame* frame){
     return true;
 }
 
-VideoWriter::VideoWriter(AVFormatContext *fc_, const string& video_path, int video_width_pixels, int video_height_pixels, int video_framerate_fps) : fc(fc_) {
+VideoWriter::VideoWriter(AVFormatContext *fc_, const string& video_path, int video_width_pixels_, int video_height_pixels_, int video_framerate_fps_)
+    : fc(fc_),
+      video_width_pixels(video_width_pixels_),
+      video_height_pixels(video_height_pixels_),
+      video_framerate_fps(video_framerate_fps_) {
     av_log_set_level(AV_LOG_DEBUG);
 
     // Setting up the codec.
@@ -151,11 +155,11 @@ VideoWriter::VideoWriter(AVFormatContext *fc_, const string& video_path, int vid
 }
 
 void VideoWriter::add_frame(Pixels& p) {
-    if (p.w != get_video_width_pixels() || p.h != get_video_height_pixels())
-        throw runtime_error("Frame dimensions were expected to be (" + to_string(get_video_width_pixels()) + ", " + to_string(get_video_height_pixels()) + "), but they were instead (" + to_string(p.w) + ", " + to_string(p.h) + ")!");
+    if (p.w != video_width_pixels || p.h != video_height_pixels)
+        throw runtime_error("Frame dimensions were expected to be (" + to_string(video_width_pixels) + ", " + to_string(video_height_pixels) + "), but they were instead (" + to_string(p.w) + ", " + to_string(p.h) + ")!");
 
     #ifdef USE_GPU
-    alpha_overlay_cuda(reinterpret_cast<unsigned int*>(p.pixels.data()), get_video_width_pixels(), get_video_height_pixels(), get_video_background_color());
+    alpha_overlay_cuda(reinterpret_cast<unsigned int*>(p.pixels.data()), video_width_pixels, video_height_pixels, get_video_background_color());
     #endif
 
     bool fifth_frame = int(get_global_state("frame_number")) % 5 == 0;
@@ -167,18 +171,18 @@ void VideoWriter::add_frame(Pixels& p) {
     // Allocate a temporary RGB frame wrapper (no copy of pixel data)
     AVFrame* rgb_frame = av_frame_alloc();
     rgb_frame->format = AV_PIX_FMT_BGRA;
-    rgb_frame->width  = get_video_width_pixels();
-    rgb_frame->height = get_video_height_pixels();
+    rgb_frame->width  = video_width_pixels;
+    rgb_frame->height = video_height_pixels;
 
     // Point FFmpeg directly to your source data
     rgb_frame->data[0] = reinterpret_cast<uint8_t*>(p.pixels.data());
-    rgb_frame->linesize[0] = get_video_width_pixels() * 4; // Assuming 4 bytes per pixel (BGRA)
+    rgb_frame->linesize[0] = video_width_pixels * 4; // Assuming 4 bytes per pixel (BGRA)
 
     // Convert RGB → YUV using swscale
     sws_scale(sws_ctx,
               rgb_frame->data,
               rgb_frame->linesize,
-              0, get_video_height_pixels(),
+              0, video_height_pixels,
               yuvpic->data,
               yuvpic->linesize);
 

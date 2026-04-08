@@ -33,6 +33,9 @@ private:
     std::vector<AVStream*>      audioStreams;
 
     AVFormatContext *fc;
+    int audio_samplerate_hz;
+    int video_framerate_fps;
+    int samples_per_frame;
 
     // Interleaved buffers: layout [L0, R0, L1, R1, ...]
     std::vector<sample_t> sample_buffer; // Audio defined in macroblocks (usually voice)
@@ -53,7 +56,7 @@ private:
     void encode_and_write_audio(AVCodecContext* codecCtx, AVStream* stream);
 
 public:
-    AudioWriter(AVFormatContext *fc_, int audio_samplerate_hz);
+    AudioWriter(AVFormatContext *fc_, int audio_samplerate_hz, int video_framerate_fps);
     void add_sfx(const std::vector<sample_t>& left_buffer, const std::vector<sample_t>& right_buffer, const double t);
 
     // These are used for 6884's transition curve hints

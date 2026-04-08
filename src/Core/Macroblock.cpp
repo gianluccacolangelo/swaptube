@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <vector>
 #include "../IO/Writer.h"
+#include "Smoketest.h"
 
 using namespace std;
 
@@ -29,8 +30,10 @@ SilenceBlock::SilenceBlock(const double duration_seconds)
 }
 
 int SilenceBlock::write_and_get_duration_frames() const {
-    get_writer().audio->add_silence(duration_frames);
-    get_writer().subtitle->add_silence(static_cast<double>(duration_frames) / get_video_framerate_fps());
+    if (rendering_on()) {
+        get_writer().audio->add_silence(duration_frames);
+        get_writer().subtitle->add_silence(static_cast<double>(duration_frames) / get_video_framerate_fps());
+    }
     return duration_frames;
 }
 string SilenceBlock::blurb() const { return "SilenceBlock(" + to_string(static_cast<double>(duration_frames) / get_video_framerate_fps()) + "s)"; }
@@ -57,8 +60,11 @@ GeneratedBlock::GeneratedBlock(const vector<int32_t>& leftBuffer, const vector<i
 }
 
 int GeneratedBlock::write_and_get_duration_frames() const {
-    int duration_frames = get_writer().audio->add_generated_audio(leftBuffer, rightBuffer);
-    get_writer().subtitle->add_subtitle(static_cast<double>(duration_frames) / get_video_framerate_fps(), "[Computer Generated Sound]");
+    int duration_frames = static_cast<int>(leftBuffer.size() / get_samples_per_frame());
+    if (rendering_on()) {
+        duration_frames = get_writer().audio->add_generated_audio(leftBuffer, rightBuffer);
+        get_writer().subtitle->add_subtitle(static_cast<double>(duration_frames) / get_video_framerate_fps(), "[Computer Generated Sound]");
+    }
     return duration_frames;
 }
 string GeneratedBlock::blurb() const { return "GeneratedBlock(" + to_string(leftBuffer.size() / get_audio_samplerate_hz()) + "s)"; }

@@ -40,10 +40,12 @@ using namespace std;
 const AVCodecID output_codec = AV_CODEC_ID_PCM_S32LE;
 const AVSampleFormat output_sample_format = AV_SAMPLE_FMT_S32;
 
-AudioWriter::AudioWriter(AVFormatContext *fc_, int audio_samplerate_hz) :
+AudioWriter::AudioWriter(AVFormatContext *fc_, int audio_samplerate_hz_, int video_framerate_fps_) :
     outputCodecContexts(std::vector<AVCodecContext*>(num_audio_streams, nullptr)),
     audioStreams(std::vector<AVStream*>(num_audio_streams, nullptr)),
-    fc(fc_), sample_buffer(), sfx_buffer(), blips_buffer(), total_samples_processed(0),
+    fc(fc_), audio_samplerate_hz(audio_samplerate_hz_), video_framerate_fps(video_framerate_fps_),
+    samples_per_frame(audio_samplerate_hz_ / video_framerate_fps_),
+    sample_buffer(), sfx_buffer(), blips_buffer(), total_samples_processed(0),
     max_sample_per_frame(), current_max_sample(0), current_sample_index_in_frame(0),
     current_macroblock_length_samples(0), current_microblock_length_samples(0), macroblock_linear_step(0), microblock_linear_step(0),
     macroblock_line(0), microblock_line(0)
@@ -126,7 +128,7 @@ void AudioWriter::encode_and_write_audio(AVCodecContext* codecCtx, AVStream* str
 }
 
 void AudioWriter::add_sfx(const vector<sample_t>& left_buffer, const vector<sample_t>& right_buffer, const double t_seconds) {
-    const int t_samples = ceil(t_seconds * get_audio_samplerate_hz());
+    const int t_samples = ceil(t_seconds * audio_samplerate_hz);
 
     if (left_buffer.size() != right_buffer.size()) {
         throw runtime_error("SFX buffer lengths do not match. Left: " + to_string(left_buffer.size()) + ", right: " + to_string(right_buffer.size()));
@@ -186,7 +188,7 @@ int AudioWriter::add_generated_audio(const vector<sample_t>& left_buffer, const 
     if (left_buffer.size() != right_buffer.size()) {
         throw runtime_error("Generated sound buffer lengths do not match. Left: "+ to_string(left_buffer.size()) + ", right: " + to_string(right_buffer.size()));
     }
-    if(left_buffer.size() % get_samples_per_frame() != 0){
+    if(left_buffer.size() % samples_per_frame != 0){
         throw runtime_error("Generated sound buffer length is not a multiple of video frame size. Size: " + to_string(left_buffer.size()) + " samples.");
     }
 
@@ -200,12 +202,12 @@ int AudioWriter::add_generated_audio(const vector<sample_t>& left_buffer, const 
 
     reset_framewise_tracking();
 
-    return num_samples * get_video_framerate_fps() / get_audio_samplerate_hz(); // Return length in frames
+    return num_samples * video_framerate_fps / audio_samplerate_hz; // Return length in frames
 }
 
 int AudioWriter::add_silence(int duration_frames) {
     if (!rendering_on()) return 0; // Don't write in smoketest
-    int num_samples = duration_frames * get_samples_per_frame();
+    int num_samples = duration_frames * samples_per_frame;
     sample_buffer.resize(sample_buffer.size() + num_samples * audio_channels, 0);
     reset_framewise_tracking();
     return duration_frames;
@@ -219,7 +221,7 @@ int AudioWriter::add_audio_from_file(const string& filename) {
     if (!file_exists(fullInputAudioFilename)) {
         int seconds = 2;
         cout << "Audio file not found: " << fullInputAudioFilename << ". Adding " << seconds << " seconds of silence instead." << endl;
-        return add_silence(seconds * get_video_framerate_fps());
+        return add_silence(seconds * video_framerate_fps);
     }
 
     int ret = 0;
@@ -257,7 +259,6 @@ int AudioWriter::add_audio_from_file(const string& filename) {
     }
 
     // Check sample rate
-    int audio_samplerate_hz = get_audio_samplerate_hz();
     if (audioStreamInput->codecpar->sample_rate != audio_samplerate_hz) {
         throw runtime_error("Error: Unsupported sample rate: " + to_string(audioStreamInput->codecpar->sample_rate) + ". Expected " + to_string(audio_samplerate_hz) + " Hz.");
     }
@@ -343,7 +344,6 @@ int AudioWriter::add_audio_from_file(const string& filename) {
     }
 
     // Add silence to align to a frame boundary
-    int samples_per_frame = get_samples_per_frame();
     while (length_in_samples % samples_per_frame != 0) {
         sample_buffer.push_back(0);
         sample_buffer.push_back(0);
@@ -440,7 +440,7 @@ void AudioWriter::encode_buffers() {
             {
                 current_max_sample = max(current_max_sample, voice_left);
                 current_sample_index_in_frame++;
-                if(current_sample_index_in_frame == get_samples_per_frame()){
+                if(current_sample_index_in_frame == samples_per_frame){
                     max_sample_per_frame.push_back(current_max_sample);
                     current_max_sample = 0;
                     current_sample_index_in_frame = 0;

@@ -1,4 +1,5 @@
 #include "../Scenes/Common/CoordinateScene.h"
+#include "../Core/Smoketest.h"
 #include "../IO/AudioWriter.h"
 #include "../IO/Writer.h"
 
@@ -179,11 +180,15 @@ private:
 void render_video() {
     PolarCurveScene scene;
 
-    std::vector<sample_t> left;
-    std::vector<sample_t> right;
-    generate_audio(left, right);
+    if (rendering_on()) {
+        std::vector<sample_t> left;
+        std::vector<sample_t> right;
+        generate_audio(left, right);
+        stage_macroblock(GeneratedBlock(left, right), kMicroblocks);
+    } else {
+        stage_macroblock(SilenceBlock(kDurationSeconds), kMicroblocks);
+    }
 
-    stage_macroblock(GeneratedBlock(left, right), kMicroblocks);
     for (int microblock = 0; microblock < kMicroblocks; ++microblock) {
         const double theta_target = kFullTurn * static_cast<double>(microblock + 1) / kMicroblocks;
         // Use linear interpolation so the visual theta progression matches the audio sweep.
