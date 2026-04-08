@@ -8,14 +8,147 @@
 #include <cmath>
 #include <sstream>
 #include <unordered_map>
+#include <unordered_set>
 #include <limits.h>
 #include <unistd.h>
 #include <cairo.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <iostream>
 #include <cstdint>
+#include <cstdlib>
+#include "../Core/Smoketest.h"
 
 using namespace std;
+
+namespace {
+
+bool is_executable_file(const string& path) {
+    return !path.empty() && access(path.c_str(), X_OK) == 0;
+}
+
+string find_executable_in_path(const string& name) {
+    const char* path_env = getenv("PATH");
+    if (path_env == nullptr) {
+        return "";
+    }
+
+    string path_list(path_env);
+    stringstream ss(path_list);
+    string directory;
+    while (getline(ss, directory, ':')) {
+        if (directory.empty()) {
+            continue;
+        }
+        const string candidate = directory + "/" + name;
+        if (is_executable_file(candidate)) {
+            return candidate;
+        }
+    }
+    return "";
+}
+
+string expand_home_path(const string& path) {
+    if (path.rfind("~/", 0) != 0) {
+        return path;
+    }
+
+    const char* home = getenv("HOME");
+    if (home == nullptr) {
+        return path;
+    }
+    return string(home) + path.substr(1);
+}
+
+string find_microtex_latex_binary() {
+    const char* env_bin = getenv("MICROTEX_LATEX_BIN");
+    if (env_bin != nullptr) {
+        const string configured_path = expand_home_path(env_bin);
+        if (is_executable_file(configured_path)) {
+            return configured_path;
+        }
+    }
+
+    const char* env_dir = getenv("MICROTEX_DIR");
+    if (env_dir != nullptr) {
+        const string configured_path = expand_home_path(string(env_dir) + "/build/LaTeX");
+        if (is_executable_file(configured_path)) {
+            return configured_path;
+        }
+    }
+
+    for (const string& candidate : {
+        "../../MicroTeX-master/build/LaTeX",
+        "../MicroTeX-master/build/LaTeX",
+        "../../MicroTeX/build/LaTeX",
+        "../MicroTeX/build/LaTeX"
+    }) {
+        if (is_executable_file(candidate)) {
+            return candidate;
+        }
+    }
+
+    return find_executable_in_path("LaTeX");
+}
+
+Pixels make_latex_placeholder(const ScalingParams& scaling_params) {
+    int width = 0;
+    int height = 0;
+    if (scaling_params.mode == ScalingMode::BoundingBox) {
+        width = max(24, static_cast<int>(round(scaling_params.max_width * 0.85f)));
+        height = max(16, static_cast<int>(round(scaling_params.max_height * 0.55f)));
+    } else {
+        const double scale = max(0.25, scaling_params.scale_factor);
+        width = max(24, static_cast<int>(round(120.0 * scale)));
+        height = max(16, static_cast<int>(round(36.0 * scale)));
+    }
+
+    Pixels placeholder(width, height);
+    const int radius = max(2, min(width, height) / 6);
+    const int border = max(1, min(width, height) / 14);
+    placeholder.rounded_rect(0, 0, width, height, radius, 0x99ffffff);
+    if (width > border * 2 && height > border * 2) {
+        placeholder.rounded_rect(border, border, width - border * 2, height - border * 2, max(1, radius - border), TRANSPARENT_BLACK);
+    }
+    placeholder.bresenham(border, border, width - border - 1, height - border - 1, 0x99ffffff, 1.0f, border);
+    placeholder.bresenham(width - border - 1, border, border, height - border - 1, 0x99ffffff, 1.0f, border);
+    return placeholder;
+}
+
+Pixels latex_placeholder_with_warning(const string& reason, ScalingParams& scaling_params) {
+    static bool warned_once = false;
+    if (!warned_once) {
+        cout << "latex_to_pix: " << reason << ". Using a placeholder during smoketest." << endl;
+        warned_once = true;
+    }
+    scaling_params.scale_factor = 1;
+    return make_latex_placeholder(scaling_params);
+}
+
+Pixels make_missing_png_placeholder() {
+    Pixels placeholder(256, 256);
+    const int dark = 0xff303030;
+    const int light = 0xff707070;
+    const int square = 32;
+    for (int y = 0; y < placeholder.h; ++y) {
+        for (int x = 0; x < placeholder.w; ++x) {
+            const bool use_light = ((x / square) + (y / square)) % 2 == 0;
+            placeholder.set_pixel_carelessly(x, y, use_light ? light : dark);
+        }
+    }
+    placeholder.bresenham(16, 16, placeholder.w - 17, placeholder.h - 17, OPAQUE_WHITE, 1.0f, 6);
+    placeholder.bresenham(placeholder.w - 17, 16, 16, placeholder.h - 17, OPAQUE_WHITE, 1.0f, 6);
+    return placeholder;
+}
+
+Pixels png_placeholder_with_warning(const string& fullpath) {
+    static unordered_set<string> warned_paths;
+    if (warned_paths.insert(fullpath).second) {
+        cout << "png_to_pix: missing input PNG " << fullpath << ". Using a placeholder during smoketest." << endl;
+    }
+    return make_missing_png_placeholder();
+}
+
+} // namespace
 
 void pix_to_png(const Pixels& pix, const string& filename) {
     if(pix.w * pix.h == 0) return; // cowardly exit.
@@ -116,8 +249,11 @@ Pixels svg_to_pix(const string& filename_with_or_without_suffix, ScalingParams& 
     GError* error = nullptr;
     RsvgHandle* handle = rsvg_handle_new_from_file(filename.c_str(), &error);
     if (!handle) {
-        string error_str = "Error loading SVG file " + filename + ": " + error->message;
-        g_error_free(error);
+        const string error_message = error != nullptr ? error->message : "Unknown librsvg error";
+        if (error != nullptr) {
+            g_error_free(error);
+        }
+        string error_str = "Error loading SVG file " + filename + ": " + error_message;
         throw runtime_error(error_str);
     }
 
@@ -174,11 +310,14 @@ Pixels svg_to_pix(const string& filename_with_or_without_suffix, ScalingParams& 
 
     // Render SVG
     if (!rsvg_handle_render_document(handle, cr, &viewport, &error)) {
-        g_error_free(error);
+        const string error_message = error != nullptr ? error->message : "Unknown librsvg render error";
+        if (error != nullptr) {
+            g_error_free(error);
+        }
         cairo_destroy(cr);
         cairo_surface_destroy(surface);
         g_object_unref(handle);
-        throw runtime_error("Failed to render SVG file " + filename + ": " + error->message);
+        throw runtime_error("Failed to render SVG file " + filename + ": " + error_message);
     }
 
     // Copy pixels into Pixels object
@@ -222,6 +361,11 @@ void png_to_pix(Pixels& pix, const string& filename_with_or_without_suffix) {
     // Open the PNG file
     FILE* fp = fopen(fullpath.c_str(), "rb");
     if (!fp) {
+        if (!rendering_on()) {
+            pix = png_placeholder_with_warning(fullpath);
+            png_cache[fullpath] = pix;
+            return;
+        }
         throw runtime_error("Failed to open PNG file " + fullpath);
     }
 
@@ -382,9 +526,24 @@ Pixels latex_to_pix(const string& latex, ScalingParams& scaling_params) {
     string name = string(full_directory_path) + "/" + name_without_folder;
 
     if (access(name.c_str(), F_OK) == -1) {
-        string command = "cd ../../MicroTeX-master/build/ && ./LaTeX -headless -foreground=#ffffffff \"-input=" + latex + "\" -output=" + name + " >/dev/null 2>&1";
+        const string latex_binary = find_microtex_latex_binary();
+        if (latex_binary.empty()) {
+            if (!rendering_on()) {
+                Pixels placeholder = latex_placeholder_with_warning("MicroTeX LaTeX binary was not found", scaling_params);
+                latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
+                return placeholder;
+            }
+            throw runtime_error("MicroTeX LaTeX binary not found. Set MICROTEX_LATEX_BIN or MICROTEX_DIR, or install MicroTeX alongside the swaptube checkout.");
+        }
+
+        string command = "\"" + latex_binary + "\" -headless -foreground=#ffffffff \"-input=" + latex + "\" -output=" + name + "\" >/dev/null 2>&1";
         int result = system(command.c_str());
         if(result != 0) {
+            if (!rendering_on()) {
+                Pixels placeholder = latex_placeholder_with_warning("MicroTeX failed to render LaTeX", scaling_params);
+                latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
+                return placeholder;
+            }
             cout << command << endl;
             throw runtime_error("Failed to generate LaTeX. Command printed above.");
         }

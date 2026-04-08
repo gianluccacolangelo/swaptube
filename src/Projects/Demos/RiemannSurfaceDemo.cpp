@@ -11,10 +11,10 @@ void render_video() {
     stage_macroblock(SilenceBlock(13), 8);
     ms.manager.set({
         {"d", "20"},
-        {"manifoldsurface_u_min", "0"},
-        {"manifoldsurface_u_max", "6"},
-        {"manifoldsurface_v_min", "-3.14"},
-        {"manifoldsurface_v_max", "3.14"},
+        {"manifoldsurface_a_min", "0"},
+        {"manifoldsurface_a_max", "6"},
+        {"manifoldsurface_b_min", "-3.14"},
+        {"manifoldsurface_b_max", "3.14"},
         // u is radius, v is angle
         {"manifoldsurface_x", "(a) (b) cos *"},
         {"manifoldsurface_y", "0"},
@@ -47,9 +47,9 @@ void render_video() {
     ms.render_microblock();
 
     ms.manager.transition(MICRO, {
-        {"manifoldsurface_v_min", "-6.28"},
-        {"manifoldsurface_v_max", "6.28"},
-        {"manifoldsurface_v_steps", "6000"},
+        {"manifoldsurface_b_min", "-6.28"},
+        {"manifoldsurface_b_max", "6.28"},
+        {"manifoldsurface_b_steps", "6000"},
     });
     ms.render_microblock();
     ms.render_microblock();

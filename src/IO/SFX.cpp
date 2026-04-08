@@ -1,7 +1,11 @@
 #include "Writer.h"
 #include "AudioWriter.h"
+#include "../Core/Smoketest.h"
 
 void sfx_boink(double time, double freq, double halflife_seconds, double volume){
+    if (!rendering_on()) {
+        return;
+    }
     double halflife_samples = halflife_seconds * get_audio_samplerate_hz();
 
     int num_samples = halflife_samples * 5;
@@ -20,6 +24,9 @@ void sfx_boink(double time, double freq, double halflife_seconds, double volume)
 }
 
 void sfx_clap(double time, double halflife_seconds, double volume){
+    if (!rendering_on()) {
+        return;
+    }
     double halflife_samples = halflife_seconds * get_audio_samplerate_hz();
 
     int num_samples = halflife_samples * 5;

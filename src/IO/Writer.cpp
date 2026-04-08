@@ -63,6 +63,10 @@ Writer& get_writer() {
     return *writer;
 }
 
+Writer* try_get_writer() {
+    return writer.get();
+}
+
 int get_audio_samplerate_hz() {
     return get_writer().get_audio_samplerate_hz();
 }

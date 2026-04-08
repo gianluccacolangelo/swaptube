@@ -46,6 +46,9 @@ void FileBlock::write_shtooka() const {
 }
 
 int FileBlock::write_and_get_duration_frames() const {
+    if (!rendering_on()) {
+        return get_video_framerate_fps();
+    }
     int duration_frames = get_writer().audio->add_audio_from_file(audio_filename);
     get_writer().subtitle->add_subtitle(static_cast<double>(duration_frames) / get_video_framerate_fps(), subtitle_text);
     return duration_frames;

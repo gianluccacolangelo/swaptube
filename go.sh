@@ -38,7 +38,7 @@ pick_cmake_generator() {
 
 # Check for required commands
 check_command_available "cmake"
-check_command_available "gnuplot"
+check_command_available "pkg-config"
 JOB_COUNT=$(get_job_count)
 CMAKE_GENERATOR=$(pick_cmake_generator)
 # Check if MicroTeX build exists.
@@ -123,14 +123,21 @@ fi
 
 # Find the project file in any subdirectory under src/Projects
 PROJECT_PATH=$(find src/Projects -type f -name "${PROJECT_NAME}.cpp" 2>/dev/null | head -n 1)
-TEMPFILE="src/Projects/.active_project.cpp"
 
 # Check if the desired project exists
 if [ -z "$PROJECT_PATH" ]; then
     echo "go.sh: Project ${PROJECT_NAME} does not exist."
     exit 1
 fi
+PROJECT_PATH=$(cd "$(dirname "$PROJECT_PATH")" && pwd)/$(basename "$PROJECT_PATH")
+TEMPFILE="$(pwd)/src/Projects/.active_project.$$.$(date +%s).cpp"
 cp "$PROJECT_PATH" "$TEMPFILE"
+
+cleanup() {
+    rm -f "$TEMPFILE"
+}
+
+trap cleanup EXIT
 
 # Generate a timestamp for this build
 OUTPUT_FOLDER_NAME=$(date +"%Y-%m-%d_%H.%M.%S")
@@ -160,7 +167,7 @@ echo "go.sh: Building project ${PROJECT_NAME} with output folder name ${OUTPUT_F
     echo "go.sh: Running \`cmake -G \"$CMAKE_GENERATOR\" ..\` from build directory"
 
     # Pass the variables to CMake as options
-    cmake -G "$CMAKE_GENERATOR" .. -DPROJECT_NAME_MACRO="${PROJECT_NAME}" -DAUDIO_HINTS="${AUDIO_HINTS}" -DAUDIO_SFX="${AUDIO_SFX}" -DUSE_HIP="${USE_HIP}"
+    cmake -G "$CMAKE_GENERATOR" .. -DPROJECT_NAME_MACRO="${PROJECT_NAME}" -DPROJECT_SOURCE_FILE="${TEMPFILE}" -DAUDIO_HINTS="${AUDIO_HINTS}" -DAUDIO_SFX="${AUDIO_SFX}" -DUSE_HIP="${USE_HIP}"
 
     echo "go.sh: Compiling..."
     # build the project
@@ -199,7 +206,7 @@ echo "go.sh: Building project ${PROJECT_NAME} with output folder name ${OUTPUT_F
     # True render
     if [ $SKIP_RENDER -eq 0 ]; then
         # Clear all files from the smoketest
-        rm io_out/* -rf
+        rm -rf io_out/*
         ./swaptube $VIDEO_WIDTH $VIDEO_HEIGHT $FRAMERATE $SAMPLERATE render 2>/dev/null
         if [ $? -ne 0 ]; then
             echo "go.sh: Execution failed in render."
@@ -213,7 +220,7 @@ RESULT=$?
 
 unlink "build/io_in"
 unlink "build/io_out"
-mv "$TEMPFILE" "$OUTPUT_DIR"
+cp "$PROJECT_PATH" "$OUTPUT_DIR/$(basename "$PROJECT_PATH")"
 
 # Play video if compilation succeeded, and not in smoketest-only mode
 if [ $RESULT -ne 1 ] && [ $SKIP_RENDER -eq 0 ]; then

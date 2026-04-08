@@ -80,10 +80,10 @@ void showcase_an_island(shared_ptr<PendulumGridScene>& pgs, const IslandShowcase
     */
 
     CompositeScene cs;
-    shared_ptr<PendulumScene> ps = make_shared<PendulumScene>(is.ps, 0.5, 1);
+    shared_ptr<PendulumScene> ps = make_shared<PendulumScene>(is.ps, vec2(0.5, 1));
     ps->set_global_identifier("ps");
     ps->alpha_subtract = 0;
-    shared_ptr<LatexScene> ls = make_shared<LatexScene>("\\text{" + is.name + "}", 1, 1, 0.2);
+    shared_ptr<LatexScene> ls = make_shared<LatexScene>("\\text{" + is.name + "}", 0.2, vec2(1, 1));
 
     // delete trailing zeros
     string str_cx = to_string(cx);
@@ -92,8 +92,8 @@ void showcase_an_island(shared_ptr<PendulumGridScene>& pgs, const IslandShowcase
     string str_p2 = to_string(is.ps.p2);
     str_cx = str_cx.erase(str_cx.find_last_not_of('0') + 1);
     str_cy = str_cy.erase(str_cy.find_last_not_of('0') + 1);
-    str_p1 = str_p1.erase(str_cx.find_last_not_of('0') + 1);
-    str_p2 = str_p2.erase(str_cy.find_last_not_of('0') + 1);
+    str_p1 = str_p1.erase(str_p1.find_last_not_of('0') + 1);
+    str_p2 = str_p2.erase(str_p2.find_last_not_of('0') + 1);
     string latex_str = "\\theta_1 = " + str_cx + ", \\theta_2 = " + str_cy;
     bool moveup = false;
     if(is.ps.p1 != 0) { latex_str += ", p_1 = " + str_p1; moveup = true; }
@@ -180,7 +180,7 @@ void identify_vibrations(float t1, float t2) {
     }
     vector<PendulumScene> specimens;
     for(int i = 0; i < start_managers.size(); i++) {
-        specimens.push_back(PendulumScene(start_managers[i], .5, .5));
+        specimens.push_back(PendulumScene(start_managers[i], vec2(0.5, 0.5)));
     }
     double anim_step = 1800;
     for(int i = 0; i < start_managers.size(); i++) {
@@ -195,7 +195,7 @@ void identify_vibrations(float t1, float t2) {
     }
     specimens[0].set_global_identifier("p0");
     specimens[1].set_global_identifier("p1");
-    CoordinateSceneWithTrail coord(.5, 1);
+    CoordinateSceneWithTrail coord(vec2(0.5, 1));
     coord.manager.set({
         {"zoom", "0.05"},
         {"trail_opacity", "1"},
@@ -223,7 +223,7 @@ void stack_diagrams(){
 
     int bb = isv.size();
     for(int i = 0; i < bb; i++){
-        PendulumScene ps(PendulumScene(isv[i].ps, .5, 1));
+        PendulumScene ps(PendulumScene(isv[i].ps, vec2(0.5, 1)));
         string key = to_string(i);
         ps.set_global_identifier("p"+key);
         cs.add_scene(make_shared<PendulumScene>(ps), "ps"+key, .75, .5);
@@ -231,7 +231,7 @@ void stack_diagrams(){
     }
     for(int i = 0; i < bb; i++){
         string key = to_string(i);
-        CoordinateSceneWithTrail cswt(1, 1);
+        CoordinateSceneWithTrail cswt(vec2(1, 1));
         cswt.manager.set({
             {"zoom", "0.02"},
             {"ticks_opacity", "0"},

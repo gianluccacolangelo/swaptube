@@ -86,7 +86,10 @@ int main(int argc, char* argv[]) {
         cout << endl << "====================" << endl;
         cout << "EXCEPTION CAUGHT IN RUNTIME: " << endl;
         cout << e.what() << endl;
-        cout << "Last written subtitle: " << get_writer().subtitle->get_last_written_subtitle() << endl;
+        Writer* writer = try_get_writer();
+        if (writer != nullptr && writer->subtitle != nullptr) {
+            cout << "Last written subtitle: " << writer->subtitle->get_last_written_subtitle() << endl;
+        }
         cout << "====================" << endl;
 
         // Change back to normal text

@@ -23,10 +23,18 @@ set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CMAKE_COMMAND} -E time")
 
 # Add globbed cpp files: all .cpp files in src, including subdirectories.
 # Exclude the src/Projects/ directory.
-# Include, however, src/Projects/.active_project.cpp
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
-list(FILTER SOURCES EXCLUDE REGEX "src/Projects/.*")
-file(GLOB_RECURSE ACTIVE_PROJECT_SOURCE CONFIGURE_DEPENDS "src/Projects/.active_project.cpp")
+list(FILTER SOURCES EXCLUDE REGEX ".*/src/Projects/.*")
+
+if(DEFINED PROJECT_SOURCE_FILE AND NOT PROJECT_SOURCE_FILE STREQUAL "")
+    set(ACTIVE_PROJECT_SOURCE "${PROJECT_SOURCE_FILE}")
+else()
+    file(GLOB_RECURSE ACTIVE_PROJECT_SOURCE CONFIGURE_DEPENDS "src/Projects/.active_project.cpp")
+endif()
+
+if(NOT ACTIVE_PROJECT_SOURCE)
+    message(FATAL_ERROR "No active project source selected. Pass -DPROJECT_SOURCE_FILE=/abs/path/to/project.cpp or create src/Projects/.active_project.cpp")
+endif()
 
 include(CheckLanguage)
 message(STATUS "Checking for CUDA and HIP support...")

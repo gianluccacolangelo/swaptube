@@ -34,6 +34,7 @@ private:
 
 void init_writer(int video_width_pixels, int video_height_pixels, int video_framerate_fps, int audio_samplerate_hz, uint32_t video_background_color);
 Writer& get_writer();
+Writer* try_get_writer();
 
 int get_video_width_pixels();
 int get_video_height_pixels();
