@@ -47,6 +47,37 @@ brew install cmake ffmpeg glib cairo librsvg libpng gnuplot nlohmann-json
 | LibPNG | PNG scenes | visual_media.cpp | Reads PNG files and converts them to pixel data | `sudo apt install libpng-dev` |
 | nlohmann/json | Reading and writing json files in I/O | Connect 4 data structures, GraphScene | GraphScene can write graphs to disk in json, Connect 4 steady states and compute caches are read from json | `sudo apt install nlohmann-json3-dev` |
 
+### Optional: Surge XT
+Swaptube can optionally embed the headless `surge-common` synth engine so projects can load finished presets and modulate them from scene state in C++.
+
+The supported setup flow is:
+
+```bash
+./scripts/setup_surge_xt.sh
+SWAPTUBE_ENABLE_SURGE_XT=1 ./go.sh SurgeXTDemo 160 90 30 -s
+```
+
+By default the setup script installs a patched Surge XT checkout into `.tmp/vendor/surge-xt`. You can point Swaptube at another checkout with:
+
+```bash
+SWAPTUBE_ENABLE_SURGE_XT=1 \
+SWAPTUBE_SURGE_XT_SOURCE_DIR=/abs/path/to/surge \
+./go.sh SurgeXTDemo 160 90 30 -s
+```
+
+Useful exploration env vars for `SurgeXTDemo`:
+
+```bash
+SWAPTUBE_SURGE_XT_LIST_PATCHES=1
+SWAPTUBE_SURGE_XT_PATCH_QUERY=pad
+SWAPTUBE_SURGE_XT_PATCH_PATH=/abs/path/to/SomePatch.fxp
+```
+
+The browsing model is preset-first:
+- look through `resources/data/patches_3rdparty/<designer>/<category>/`
+- shortlist patches by scene role such as `Pads`, `Leads`, `Plucks`, `FX`, or `Sequences`
+- map scene state into macros, mod wheel, aftertouch, pitch bend, and note choice before reaching for lower-level parameter surgery
+
 ## Docker Setup
 For easy deployment with all dependencies included, see the [docker/README.md](docker/README.md) for containerized setup instructions. This is optional and community-made for Docker users. I (2swap) personally don't use or maintain it.
 

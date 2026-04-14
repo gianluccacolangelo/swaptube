@@ -41,12 +41,16 @@ check_command_available "cmake"
 check_command_available "pkg-config"
 JOB_COUNT=$(get_job_count)
 CMAKE_GENERATOR=$(pick_cmake_generator)
+REPO_ROOT=$(pwd)
+SURGE_XT_ENABLED=${SWAPTUBE_ENABLE_SURGE_XT:-0}
+SURGE_XT_SOURCE_DIR=${SWAPTUBE_SURGE_XT_SOURCE_DIR:-"${REPO_ROOT}/.tmp/vendor/surge-xt"}
 # Check if MicroTeX build exists.
-# It is only needed by projects that render LaTeX, so do not fail early if it is absent.
+# It is only needed by projects that render LaTeX, and LaTeX rendering can also
+# fall back to TeX Live's xelatex plus pdftocairo when those tools are installed.
 if [ ! -s "../MicroTeX-master/build/LaTeX" ]; then
     echo "go.sh: Warning - ../MicroTeX-master/build/LaTeX was not found."
-    echo "go.sh: Projects that call latex_to_pix() will fail at runtime until MicroTeX is installed."
-    echo "go.sh: Install instructions are available at https://github.com/NanoMichael/MicroTeX"
+    echo "go.sh: latex_to_pix() will fall back to TeX Live if xelatex and pdftocairo are available."
+    echo "go.sh: MicroTeX install instructions are available at https://github.com/NanoMichael/MicroTeX"
 fi
 
 # Check if the number of arguments is less or more than expected
@@ -54,6 +58,7 @@ if [ $# -lt 4 ]; then
     echo "go.sh: Suppose that in the Projects/ directory you have made a project called myproject.cpp."
     echo "go.sh: Usage: $0 <ProjectName> <VideoWidth> <VideoHeight> <Framerate> [optional extra flags]"
     echo "go.sh: Example: $0 myproject 640 360 30 -hx"
+    echo "go.sh: Optional Surge XT env vars: SWAPTUBE_ENABLE_SURGE_XT=1 SWAPTUBE_SURGE_XT_SOURCE_DIR=/abs/path/to/surge"
     exit 1
 fi
 
@@ -147,6 +152,16 @@ mkdir -p "$OUTPUT_DIR"
 INPUT_DIR="media/${PROJECT_NAME}"
 mkdir -p "$INPUT_DIR/latex"
 
+if [ "$SURGE_XT_ENABLED" = "1" ]; then
+    echo "go.sh: Surge XT support enabled."
+    echo "go.sh: Preparing checkout at ${SURGE_XT_SOURCE_DIR}"
+    "${REPO_ROOT}/scripts/setup_surge_xt.sh" "${SURGE_XT_SOURCE_DIR}"
+    if [ $? -ne 0 ]; then
+        echo "go.sh: Surge XT setup failed."
+        exit 1
+    fi
+fi
+
 echo "go.sh: Building project ${PROJECT_NAME} with output folder name ${OUTPUT_FOLDER_NAME}"
 (
     mkdir -p build
@@ -167,7 +182,14 @@ echo "go.sh: Building project ${PROJECT_NAME} with output folder name ${OUTPUT_F
     echo "go.sh: Running \`cmake -G \"$CMAKE_GENERATOR\" ..\` from build directory"
 
     # Pass the variables to CMake as options
-    cmake -G "$CMAKE_GENERATOR" .. -DPROJECT_NAME_MACRO="${PROJECT_NAME}" -DPROJECT_SOURCE_FILE="${TEMPFILE}" -DAUDIO_HINTS="${AUDIO_HINTS}" -DAUDIO_SFX="${AUDIO_SFX}" -DUSE_HIP="${USE_HIP}"
+    cmake -G "$CMAKE_GENERATOR" .. \
+        -DPROJECT_NAME_MACRO="${PROJECT_NAME}" \
+        -DPROJECT_SOURCE_FILE="${TEMPFILE}" \
+        -DAUDIO_HINTS="${AUDIO_HINTS}" \
+        -DAUDIO_SFX="${AUDIO_SFX}" \
+        -DUSE_HIP="${USE_HIP}" \
+        -DSWAPTUBE_ENABLE_SURGE_XT="${SURGE_XT_ENABLED}" \
+        -DSURGE_XT_SOURCE_DIR="${SURGE_XT_SOURCE_DIR}"
 
     echo "go.sh: Compiling..."
     # build the project

@@ -16,6 +16,9 @@
 #include <iostream>
 #include <cstdint>
 #include <cstdlib>
+#include <cerrno>
+#include <cstring>
+#include <fstream>
 #include "../Core/Smoketest.h"
 
 using namespace std;
@@ -59,19 +62,80 @@ string expand_home_path(const string& path) {
     return string(home) + path.substr(1);
 }
 
+string get_env_string(const char* name) {
+    const char* value = getenv(name);
+    return value == nullptr ? "" : string(value);
+}
+
+string basename_of_path(const string& path) {
+    const size_t separator = path.find_last_of('/');
+    if (separator == string::npos) {
+        return path;
+    }
+    return path.substr(separator + 1);
+}
+
+string canonical_or_original_path(const string& path) {
+    char resolved_path[PATH_MAX];
+    if (realpath(path.c_str(), resolved_path) != nullptr) {
+        return string(resolved_path);
+    }
+    return path;
+}
+
+bool is_probably_microtex_binary(const string& path) {
+    if (!is_executable_file(path)) {
+        return false;
+    }
+
+    const string binary_name = basename_of_path(canonical_or_original_path(path));
+    return binary_name != "pdftex"
+        && binary_name != "latex"
+        && binary_name != "pdflatex"
+        && binary_name != "xelatex"
+        && binary_name != "lualatex";
+}
+
+string shell_quote(const string& value) {
+    string quoted = "'";
+    for (char c : value) {
+        if (c == '\'') {
+            quoted += "'\\''";
+        } else {
+            quoted += c;
+        }
+    }
+    quoted += "'";
+    return quoted;
+}
+
+void ensure_directory_exists(const string& path) {
+    struct stat directory_stat;
+    if (stat(path.c_str(), &directory_stat) == 0) {
+        if (S_ISDIR(directory_stat.st_mode)) {
+            return;
+        }
+        throw runtime_error("Path exists but is not a directory: " + path);
+    }
+
+    if (mkdir(path.c_str(), 0755) != 0 && errno != EEXIST) {
+        throw runtime_error("Failed to create directory " + path + ": " + string(strerror(errno)));
+    }
+}
+
 string find_microtex_latex_binary() {
-    const char* env_bin = getenv("MICROTEX_LATEX_BIN");
-    if (env_bin != nullptr) {
+    const string env_bin = get_env_string("MICROTEX_LATEX_BIN");
+    if (!env_bin.empty()) {
         const string configured_path = expand_home_path(env_bin);
-        if (is_executable_file(configured_path)) {
+        if (is_probably_microtex_binary(configured_path)) {
             return configured_path;
         }
     }
 
-    const char* env_dir = getenv("MICROTEX_DIR");
-    if (env_dir != nullptr) {
-        const string configured_path = expand_home_path(string(env_dir) + "/build/LaTeX");
-        if (is_executable_file(configured_path)) {
+    const string env_dir = get_env_string("MICROTEX_DIR");
+    if (!env_dir.empty()) {
+        const string configured_path = expand_home_path(env_dir + "/build/LaTeX");
+        if (is_probably_microtex_binary(configured_path)) {
             return configured_path;
         }
     }
@@ -82,12 +146,148 @@ string find_microtex_latex_binary() {
         "../../MicroTeX/build/LaTeX",
         "../MicroTeX/build/LaTeX"
     }) {
-        if (is_executable_file(candidate)) {
+        if (is_probably_microtex_binary(candidate)) {
             return candidate;
         }
     }
 
-    return find_executable_in_path("LaTeX");
+    const string path_candidate = find_executable_in_path("LaTeX");
+    return is_probably_microtex_binary(path_candidate) ? path_candidate : "";
+}
+
+string find_texlive_xelatex_binary() {
+    return find_executable_in_path("xelatex");
+}
+
+string find_pdftocairo_binary() {
+    return find_executable_in_path("pdftocairo");
+}
+
+bool texlive_font_config_present() {
+    return !get_env_string("SWAPTUBE_TEX_FONT").empty()
+        || !get_env_string("SWAPTUBE_TEX_MAIN_FONT").empty()
+        || !get_env_string("SWAPTUBE_TEX_SANS_FONT").empty()
+        || !get_env_string("SWAPTUBE_TEX_MONO_FONT").empty()
+        || !get_env_string("SWAPTUBE_TEX_MATH_FONT").empty();
+}
+
+string get_latex_backend_preference() {
+    return get_env_string("SWAPTUBE_LATEX_BACKEND");
+}
+
+string sanitize_tex_font_name(const string& font_name) {
+    if (font_name.find_first_of("{}%\\\n\r") != string::npos) {
+        throw runtime_error("Invalid font name in SWAPTUBE_TEX_* environment variable: " + font_name);
+    }
+    return font_name;
+}
+
+string build_texlive_font_setup() {
+    const string shared_font = get_env_string("SWAPTUBE_TEX_FONT");
+    string main_font = get_env_string("SWAPTUBE_TEX_MAIN_FONT");
+    string sans_font = get_env_string("SWAPTUBE_TEX_SANS_FONT");
+    const string mono_font = get_env_string("SWAPTUBE_TEX_MONO_FONT");
+    const string math_font = get_env_string("SWAPTUBE_TEX_MATH_FONT");
+
+    if (main_font.empty()) {
+        main_font = shared_font;
+    }
+    if (sans_font.empty()) {
+        sans_font = shared_font;
+    }
+
+    string setup;
+    setup += "\\defaultfontfeatures{Ligatures=TeX}\n";
+    if (!main_font.empty()) {
+        setup += "\\setmainfont{" + sanitize_tex_font_name(main_font) + "}\n";
+    }
+    if (!sans_font.empty()) {
+        setup += "\\setsansfont{" + sanitize_tex_font_name(sans_font) + "}\n";
+    }
+    if (!mono_font.empty()) {
+        setup += "\\setmonofont{" + sanitize_tex_font_name(mono_font) + "}\n";
+    }
+    if (!math_font.empty()) {
+        setup += "\\setmathfont{" + sanitize_tex_font_name(math_font) + "}\n";
+    }
+    return setup;
+}
+
+string build_texlive_latex_document(const string& latex) {
+    string document;
+    document += "\\documentclass[preview,varwidth,border=0pt]{standalone}\n";
+    document += "\\usepackage{amsmath}\n";
+    document += "\\usepackage{amssymb}\n";
+    document += "\\usepackage{xcolor}\n";
+    document += "\\usepackage{fontspec}\n";
+    document += "\\usepackage{unicode-math}\n";
+    document += build_texlive_font_setup();
+    document += "\\begin{document}\n";
+    document += "\\color[HTML]{FFFFFF}\n";
+    if (latex.find("\\begin{") != string::npos) {
+        document += latex;
+        document += "\n";
+    } else {
+        // Most existing swaptube strings are equation fragments rather than full documents.
+        document += "\\[\n";
+        document += latex;
+        document += "\n\\]\n";
+    }
+    document += "\\end{document}\n";
+    return document;
+}
+
+void render_latex_with_microtex(const string& latex, const string& output_svg_path, const string& latex_binary) {
+    const string command =
+        shell_quote(latex_binary) +
+        " -headless -foreground=#ffffffff " +
+        shell_quote("-input=" + latex) +
+        " -output=" +
+        shell_quote(output_svg_path) +
+        " >/dev/null 2>&1";
+
+    const int result = system(command.c_str());
+    if (result != 0 || access(output_svg_path.c_str(), F_OK) == -1) {
+        throw runtime_error("Failed to generate LaTeX with MicroTeX.");
+    }
+}
+
+void render_latex_with_texlive(const string& latex, const string& output_svg_path, const string& xelatex_binary, const string& pdftocairo_binary) {
+    const string output_stem = output_svg_path.substr(0, output_svg_path.size() - 4);
+    const string tex_path = output_stem + ".tex";
+    const string pdf_path = output_stem + ".pdf";
+    const string log_path = output_stem + ".log";
+
+    ofstream tex_output(tex_path);
+    if (!tex_output) {
+        throw runtime_error("Failed to create TeX source file " + tex_path);
+    }
+    tex_output << build_texlive_latex_document(latex);
+    tex_output.close();
+
+    const string xelatex_command =
+        shell_quote(xelatex_binary) +
+        " -interaction=nonstopmode -halt-on-error -output-directory=" +
+        shell_quote("io_in/latex") +
+        " " +
+        shell_quote(tex_path) +
+        " >/dev/null 2>&1";
+    const int xelatex_result = system(xelatex_command.c_str());
+    if (xelatex_result != 0 || access(pdf_path.c_str(), F_OK) == -1) {
+        throw runtime_error("Failed to generate LaTeX with XeLaTeX. See " + log_path);
+    }
+
+    const string pdftocairo_command =
+        shell_quote(pdftocairo_binary) +
+        " -svg " +
+        shell_quote(pdf_path) +
+        " " +
+        shell_quote(output_svg_path) +
+        " >/dev/null 2>&1";
+    const int pdftocairo_result = system(pdftocairo_command.c_str());
+    if (pdftocairo_result != 0 || access(output_svg_path.c_str(), F_OK) == -1) {
+        throw runtime_error("Failed to convert XeLaTeX output PDF to SVG.");
+    }
 }
 
 Pixels make_latex_placeholder(const ScalingParams& scaling_params) {
@@ -493,65 +693,122 @@ void png_to_pix_bounding_box(Pixels& pix, const string& filename, int w, int h) 
 // Create an unordered_map to store the cached results
 unordered_map<string, pair<Pixels, double>> latex_cache;
 
-static string generate_cache_key(const string& text, const ScalingParams& scaling_params) {
+static string generate_cache_key(const string& text, const ScalingParams& scaling_params, const string& render_signature) {
     hash<string> hasher;
-    string key = text + "_" + to_string(static_cast<int>(scaling_params.mode)) + "_" + 
-                 to_string(scaling_params.max_width) + "_" + 
-                 to_string(scaling_params.max_height) + "_" + 
+    string key = text + "_" + render_signature + "_" +
+                 to_string(static_cast<int>(scaling_params.mode)) + "_" +
+                 to_string(scaling_params.max_width) + "_" +
+                 to_string(scaling_params.max_height) + "_" +
                  to_string(scaling_params.scale_factor);
     return to_string(hasher(key));
 }
 
 /*
- * We use MicroTEX to convert LaTeX equations into svg files.
+ * We prefer MicroTeX for legacy compatibility, but can fall back to XeLaTeX
+ * plus pdftocairo when only a regular TeX Live install is present.
  */
 Pixels latex_to_pix(const string& latex, ScalingParams& scaling_params) {
-    // Generate a cache key based on the equation and scaling parameters
-    string cache_key = generate_cache_key(latex, scaling_params);
+    const string backend_preference = get_latex_backend_preference();
+    const string microtex_binary = find_microtex_latex_binary();
+    const string xelatex_binary = find_texlive_xelatex_binary();
+    const string pdftocairo_binary = find_pdftocairo_binary();
 
-    // Check if the result is already in the cache
+    string backend;
+    if (backend_preference == "microtex") {
+        backend = "microtex";
+    } else if (backend_preference == "texlive") {
+        backend = "texlive";
+    } else if (!backend_preference.empty()) {
+        throw runtime_error("Unknown SWAPTUBE_LATEX_BACKEND value: " + backend_preference + ". Use 'microtex' or 'texlive'.");
+    } else if (texlive_font_config_present()) {
+        backend = "texlive";
+    } else if (!microtex_binary.empty()) {
+        backend = "microtex";
+    } else if (!xelatex_binary.empty() && !pdftocairo_binary.empty()) {
+        backend = "texlive";
+    }
+
+    const string render_signature =
+        "backend=" + backend +
+        ";preference=" + backend_preference +
+        ";font=" + get_env_string("SWAPTUBE_TEX_FONT") +
+        ";main=" + get_env_string("SWAPTUBE_TEX_MAIN_FONT") +
+        ";sans=" + get_env_string("SWAPTUBE_TEX_SANS_FONT") +
+        ";mono=" + get_env_string("SWAPTUBE_TEX_MONO_FONT") +
+        ";math=" + get_env_string("SWAPTUBE_TEX_MATH_FONT");
+
+    // Generate a cache key based on the equation, backend, and scaling parameters.
+    string cache_key = generate_cache_key(latex, scaling_params, render_signature);
+
+    // Check if the result is already in the cache.
     auto it = latex_cache.find(cache_key);
     if (it != latex_cache.end()) {
         scaling_params.scale_factor = it->second.second;
-        return it->second.first; // Return the cached Pixels object
+        return it->second.first;
     }
 
     cout << "Generating LaTeX for: " << latex << endl;
 
     hash<string> hasher;
-    char full_directory_path[PATH_MAX];
-    string latex_dir = "io_in/latex/";
-    realpath(latex_dir.c_str(), full_directory_path);
-    string name_without_folder = to_string(hasher(latex)) + ".svg";
-    string name = string(full_directory_path) + "/" + name_without_folder;
+    const string latex_dir = "io_in/latex";
+    ensure_directory_exists(latex_dir);
+    const string name_without_folder = to_string(hasher(render_signature + "\n" + latex)) + ".svg";
+    const string name = latex_dir + "/" + name_without_folder;
 
     if (access(name.c_str(), F_OK) == -1) {
-        const string latex_binary = find_microtex_latex_binary();
-        if (latex_binary.empty()) {
-            if (!rendering_on()) {
-                Pixels placeholder = latex_placeholder_with_warning("MicroTeX LaTeX binary was not found", scaling_params);
-                latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
-                return placeholder;
+        if (backend == "microtex") {
+            if (microtex_binary.empty()) {
+                if (!rendering_on()) {
+                    Pixels placeholder = latex_placeholder_with_warning("MicroTeX LaTeX binary was not found", scaling_params);
+                    latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
+                    return placeholder;
+                }
+                throw runtime_error("MicroTeX LaTeX binary not found. Set MICROTEX_LATEX_BIN or MICROTEX_DIR, or set SWAPTUBE_LATEX_BACKEND=texlive to use XeLaTeX.");
             }
-            throw runtime_error("MicroTeX LaTeX binary not found. Set MICROTEX_LATEX_BIN or MICROTEX_DIR, or install MicroTeX alongside the swaptube checkout.");
-        }
 
-        string command = "\"" + latex_binary + "\" -headless -foreground=#ffffffff \"-input=" + latex + "\" -output=" + name + "\" >/dev/null 2>&1";
-        int result = system(command.c_str());
-        if(result != 0) {
+            try {
+                render_latex_with_microtex(latex, name, microtex_binary);
+            } catch (const runtime_error& error) {
+                if (!rendering_on()) {
+                    Pixels placeholder = latex_placeholder_with_warning(error.what(), scaling_params);
+                    latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
+                    return placeholder;
+                }
+                throw;
+            }
+        } else if (backend == "texlive") {
+            if (xelatex_binary.empty() || pdftocairo_binary.empty()) {
+                const string missing_piece = xelatex_binary.empty() ? "XeLaTeX" : "pdftocairo";
+                if (!rendering_on()) {
+                    Pixels placeholder = latex_placeholder_with_warning(missing_piece + " was not found", scaling_params);
+                    latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
+                    return placeholder;
+                }
+                throw runtime_error(missing_piece + " was not found. Install TeX Live with xelatex and poppler's pdftocairo.");
+            }
+
+            try {
+                render_latex_with_texlive(latex, name, xelatex_binary, pdftocairo_binary);
+            } catch (const runtime_error& error) {
+                if (!rendering_on()) {
+                    Pixels placeholder = latex_placeholder_with_warning(error.what(), scaling_params);
+                    latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
+                    return placeholder;
+                }
+                throw;
+            }
+        } else {
             if (!rendering_on()) {
-                Pixels placeholder = latex_placeholder_with_warning("MicroTeX failed to render LaTeX", scaling_params);
+                Pixels placeholder = latex_placeholder_with_warning("No LaTeX renderer was found", scaling_params);
                 latex_cache[cache_key] = make_pair(placeholder, scaling_params.scale_factor);
                 return placeholder;
             }
-            cout << command << endl;
-            throw runtime_error("Failed to generate LaTeX. Command printed above.");
+            throw runtime_error("No LaTeX renderer was found. Install MicroTeX or use TeX Live with xelatex and pdftocairo.");
         }
     }
 
-    // System call successful, return the generated SVG
     Pixels pixels = svg_to_pix("latex/" + name_without_folder, scaling_params);
-    latex_cache[cache_key] = make_pair(pixels, scaling_params.scale_factor); // Cache the result before returning
+    latex_cache[cache_key] = make_pair(pixels, scaling_params.scale_factor);
     return pixels;
 }
 

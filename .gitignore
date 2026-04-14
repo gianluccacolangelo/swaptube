@@ -1,7 +1,10 @@
 build
+build-surge
 out
 media
+.tmp/vendor
 src/Projects/.active_project.cpp
+src/Projects/.active_project.*.cpp
 src/HIP
 
 # vim temp files

@@ -5,6 +5,13 @@ message(STATUS "C++ standard set to ${CMAKE_CXX_STANDARD}")
 project(swaptube LANGUAGES CXX)
 message(STATUS "Project '${PROJECT_NAME}' initialized")
 
+option(SWAPTUBE_ENABLE_SURGE_XT "Enable headless Surge XT integration" OFF)
+set(SURGE_XT_SOURCE_DIR "" CACHE PATH "Path to a Surge XT source checkout")
+
+if((NOT SURGE_XT_SOURCE_DIR OR SURGE_XT_SOURCE_DIR STREQUAL "") AND DEFINED ENV{SWAPTUBE_SURGE_XT_SOURCE_DIR})
+    set(SURGE_XT_SOURCE_DIR "$ENV{SWAPTUBE_SURGE_XT_SOURCE_DIR}" CACHE PATH "Path to a Surge XT source checkout" FORCE)
+endif()
+
 if(NOT APPLE)
     set(ENV{GLIBCXX_FORCE_NEW} 1)
 endif()
@@ -118,6 +125,48 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${PROJECT_NAME}
 )
 
+if(SWAPTUBE_ENABLE_SURGE_XT)
+    if(NOT SURGE_XT_SOURCE_DIR OR NOT EXISTS "${SURGE_XT_SOURCE_DIR}/CMakeLists.txt")
+        message(FATAL_ERROR "SWAPTUBE_ENABLE_SURGE_XT is ON, but SURGE_XT_SOURCE_DIR is not a valid Surge XT checkout.")
+    endif()
+
+    set(_SWAPTUBE_PREV_CMAKE_PROJECT_VERSION_MAJOR "${CMAKE_PROJECT_VERSION_MAJOR}")
+    set(_SWAPTUBE_PREV_CMAKE_PROJECT_VERSION_MINOR "${CMAKE_PROJECT_VERSION_MINOR}")
+    file(STRINGS "${SURGE_XT_SOURCE_DIR}/CMakeLists.txt" _SWAPTUBE_SURGE_PROJECT_LINE
+        REGEX "^[ \t]*project\\(Surge VERSION [0-9]+\\.[0-9]+\\.[0-9]+"
+    )
+    if(_SWAPTUBE_SURGE_PROJECT_LINE MATCHES "VERSION[ \t]+([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+        set(CMAKE_PROJECT_VERSION_MAJOR "${CMAKE_MATCH_1}")
+        set(CMAKE_PROJECT_VERSION_MINOR "${CMAKE_MATCH_2}")
+    else()
+        set(CMAKE_PROJECT_VERSION_MAJOR "1")
+        set(CMAKE_PROJECT_VERSION_MINOR "4")
+    endif()
+
+    set(SURGE_BUILD_FX OFF CACHE BOOL "" FORCE)
+    set(SURGE_BUILD_XT OFF CACHE BOOL "" FORCE)
+    set(SURGE_BUILD_TESTRUNNER OFF CACHE BOOL "" FORCE)
+    set(SURGE_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "" FORCE)
+    set(SURGE_BUILD_RS OFF CACHE BOOL "" FORCE)
+    set(SURGE_BUILD_RS_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SURGE_COPY_TO_PRODUCTS OFF CACHE BOOL "" FORCE)
+    set(SURGE_COPY_AFTER_BUILD OFF CACHE BOOL "" FORCE)
+    set(SURGE_SKIP_STANDALONE TRUE CACHE BOOL "" FORCE)
+    set(SURGE_SKIP_JUCE_FOR_RACK TRUE CACHE BOOL "" FORCE)
+    set(SURGE_SKIP_WERROR TRUE CACHE BOOL "" FORCE)
+    set(SURGE_SKIP_PIE_CHANGE TRUE CACHE BOOL "" FORCE)
+
+    add_subdirectory("${SURGE_XT_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/surge-xt" EXCLUDE_FROM_ALL)
+
+    set(CMAKE_PROJECT_VERSION_MAJOR "${_SWAPTUBE_PREV_CMAKE_PROJECT_VERSION_MAJOR}")
+    set(CMAKE_PROJECT_VERSION_MINOR "${_SWAPTUBE_PREV_CMAKE_PROJECT_VERSION_MINOR}")
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+        SWAPTUBE_USE_SURGE_XT=1
+        SWAPTUBE_SURGE_XT_DATA_DIR="${SURGE_XT_SOURCE_DIR}/resources/data"
+    )
+endif()
+
 target_link_libraries(
     ${PROJECT_NAME} PRIVATE
     PkgConfig::GLIB
@@ -128,6 +177,10 @@ target_link_libraries(
     ${GPU_LIBRARIES}
     nlohmann_json::nlohmann_json
 )
+
+if(SWAPTUBE_ENABLE_SURGE_XT)
+    target_link_libraries(${PROJECT_NAME} PRIVATE surge::surge-common)
+endif()
 
 message(STATUS "Link libraries configured for ${PROJECT_NAME}")
 target_compile_options(${PROJECT_NAME} PRIVATE -Wreorder)

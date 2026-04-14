@@ -1,0 +1,30 @@
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 6a42db1..418840b 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -142,8 +142,8 @@ if(SURGE_BUILD_LV2)
+   message(STATUS "Including JUCE7 LV2 support.")
+ endif()
+ 
+-set(SSTPI_ASIOSDK "${CMAKE_SOURCE_DIR}/libs/sst/sst-plugininfra/libs/asiosdk")
+-if(EXISTS "${CMAKE_SOURCE_DIR}/libs/sst/sst-plugininfra/libs/asiosdk")
++set(SSTPI_ASIOSDK "${SURGE_SOURCE_DIR}/libs/sst/sst-plugininfra/libs/asiosdk")
++if(EXISTS "${SURGE_SOURCE_DIR}/libs/sst/sst-plugininfra/libs/asiosdk")
+   if (WIN32)
+     message(STATUS "ASIO SDK located in sst-plugininfra. Enabling")
+     target_compile_definitions(surge-juce INTERFACE JUCE_ASIO=1)
+diff --git a/src/common/CMakeLists.txt b/src/common/CMakeLists.txt
+index 846189c..8e3d093 100644
+--- a/src/common/CMakeLists.txt
++++ b/src/common/CMakeLists.txt
+@@ -347,8 +347,8 @@ endif()
+ target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/geninclude/version.cpp)
+ 
+ # r8brain isn't cmaked but it's just one file
+-target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/libs/r8brain-free-src/r8bbase.cpp)
+-target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/libs/r8brain-free-src)
++target_sources(${PROJECT_NAME} PRIVATE ${SURGE_SOURCE_DIR}/libs/r8brain-free-src/r8bbase.cpp)
++target_include_directories(${PROJECT_NAME} PRIVATE ${SURGE_SOURCE_DIR}/libs/r8brain-free-src)
+ 
+ add_library(surge::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+ target_link_libraries(${PROJECT_NAME}
